@@ -1,7 +1,7 @@
 # SystemBioTrack ⏱
 **Sistema de Control de Asistencia Biométrico (ISAPI/HTTP)**
 
-Plataforma Fullstack para automatizar, registrar y auditar la asistencia del personal mediante la integración en tiempo real con un reloj biométrico ZKTeco (protocolo ISAPI/HTTP).
+Plataforma Fullstack para automatizar, registrar y auditar la asistencia del personal mediante la integración en tiempo real con un reloj biométrico compatible con ISAPI/HTTP.
 
 ---
 
