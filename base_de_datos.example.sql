@@ -40,7 +40,7 @@ CREATE TABLE empleado ( -- Crea la tabla 'empleado'
     nombre VARCHAR NOT NULL, -- Nombre del empleado, obligatorio
     apellido VARCHAR NOT NULL, -- Apellido del empleado, obligatorio
     cedula VARCHAR UNIQUE NOT NULL, -- Cédula única del empleado, no puede repetirse
-    id_empleado_biometrico INTEGER UNIQUE, -- ID asignado en el reloj biométrico ZKTeco, debe ser único
+    id_empleado_biometrico INTEGER UNIQUE, -- ID asignado en el reloj biométrico compatible con ISAPI/HTTP, debe ser único
     cargo_id INTEGER NOT NULL, -- Guarda el ID del cargo asignado
     horario_id INTEGER NOT NULL -- Guarda el ID del horario asignado
 );
