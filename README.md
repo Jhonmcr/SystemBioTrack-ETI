@@ -1,7 +1,7 @@
 # SystemBioTrack ⏱
 **Sistema de Control de Asistencia Biométrico (ISAPI/HTTP)**
 
-Plataforma Fullstack para automatizar, registrar y auditar la asistencia del personal mediante la integración en tiempo real con un reloj biométrico ZKTeco (protocolo ISAPI/HTTP).
+Plataforma Fullstack para automatizar, registrar y auditar la asistencia del personal mediante la integración en tiempo real con un reloj biométrico Hikvision (protocolo ISAPI/HTTP).
 
 ---
 
@@ -25,7 +25,7 @@ Abre la terminal en Visual Studio Code y ejecuta los comandos en el siguiente or
 
 ### Paso 1: Clonar el repositorio y entrar al proyecto
 git clone [https://github.com/Jhonmcr/SystemBioTrack-ETI.git]
-cd SystemBioTrack
+cd SystemBioTrack-ETI
 
 ### Paso 2: Configurar el Frontend (React)
 # 1. Entrar a la carpeta del frontend
@@ -53,7 +53,6 @@ pip install -r requirements.txt
 
 # 5. Volver a la raíz del proyecto
 cd ..
-
 
 
 ### Rutina Diaria de Trabajo (Cómo encender el proyecto cada día)
