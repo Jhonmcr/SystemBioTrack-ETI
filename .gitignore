@@ -1,0 +1,46 @@
+# ============================================
+# BASE DE DATOS LOCAL (ignorar dumps personales)
+# Cada quien usa su propia copia local basada en
+# base_de_datos.example.sql
+# ============================================
+base_de_datos.sql
+*.dump
+*.backup
+
+# ============================================
+# ENTORNOS VIRTUALES PYTHON
+# ============================================
+venv/
+env/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ============================================
+# DEPENDENCIAS NODE / REACT
+# ============================================
+node_modules/
+dist/
+build/
+.next/
+
+# ============================================
+# VARIABLES DE ENTORNO (contienen contraseñas)
+# ============================================
+.env
+.env.local
+.env.*.local
+
+# ============================================
+# ARCHIVOS DEL SISTEMA Y EDITORES
+# ============================================
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+.vscode/
+*.suo
+*.user
