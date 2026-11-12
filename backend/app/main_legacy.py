@@ -1,3 +1,4 @@
+# SUMMARY: Mantiene la aplicación FastAPI legada para la recepción directa de eventos biométricos.
 """
 =============================================================================
 SUMMARY DEL MÓDULO

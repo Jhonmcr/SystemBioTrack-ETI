@@ -1,6 +1,24 @@
-# SUMMARY: Reexporta los modelos de la capa de persistencia para facilitar importaciones centralizadas en servicios y endpoints.
-from app.db.models.user import User  # Importa el modelo principal de usuarios para registrar estudiantes o personal.
-from app.db.models.schedule import Schedule  # Importa el modelo de horarios y reglas de asistencia.
-from app.db.models.attendance_log import AttendanceLog  # Importa el modelo de registros de asistencia consolidada.
+# SUMMARY: Reexporta los ocho modelos ORM oficiales para su registro y uso en la aplicación.
+"""Official ORM models mapped to ``base_de_datos.example.sql``."""
 
-__all__ = ["User", "Schedule", "AttendanceLog"]  # Expone los modelos a la aplicación para inicialización y consultas.
+from app.db.models.official_models import (
+    Asistencia_Diaria,
+    Cargo,
+    Empleado,
+    Estatus_Asistencia,
+    Horario,
+    Marcaje_Crudo,
+    Rol,
+    Usuario,
+)
+
+__all__ = [
+    "Rol",
+    "Cargo",
+    "Usuario",
+    "Empleado",
+    "Horario",
+    "Estatus_Asistencia",
+    "Marcaje_Crudo",
+    "Asistencia_Diaria",
+]

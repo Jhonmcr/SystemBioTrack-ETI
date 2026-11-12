@@ -6,18 +6,18 @@ from sqlalchemy.orm import Session, sessionmaker  # Importa la sesión y el cons
 from app.core.config import get_settings  # Importa la configuración centralizada del proyecto.
 from app.db.base import Base  # Importa Base para registrar modelos antes de crear tablas.
 
-settings = get_settings()  # Carga la configuración actual del proyecto una sola vez.
-engine = create_engine(settings.database_url, pool_pre_ping=True)  # Crea el engine con verificación de conexiones activas.
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)  # Fabrica sesiones ORM para cada request.
+Configuracion = get_settings()  # Carga la configuración actual del proyecto una sola vez.
+Motor_Base_Datos = create_engine(Configuracion.database_url, pool_pre_ping=True)  # Crea el engine con verificación de conexiones activas.
+Sesion_Local = sessionmaker(autocommit=False, autoflush=False, bind=Motor_Base_Datos)  # Fabrica sesiones ORM para cada request.
 
 
 def get_db() -> Generator[Session, None, None]:  # Define la dependencia que FastAPI usará para obtener una sesión por petición.
-    db = SessionLocal()  # Abre una nueva sesión para la ejecución actual.
+    Db_Sesion = Sesion_Local()  # Abre una nueva sesión para la ejecución actual.
     try:  # Inicia bloque try/finally para garantizar cierre seguro.
-        yield db  # Entrega la sesión al endpoint o servicio que la consume.
+        yield Db_Sesion  # Entrega la sesión al endpoint o servicio que la consume.
     finally:  # Ejecuta limpieza siempre al finalizar la petición.
-        db.close()  # Cierra la sesión para liberar recursos del pool de conexiones.
+        Db_Sesion.close()  # Cierra la sesión para liberar recursos del pool de conexiones.
 
 
 def create_db_and_tables() -> None:  # Crea las tablas de la base de datos si aún no existen.
-    Base.metadata.create_all(bind=engine)  # Ejecuta creación de todos los modelos ligados a Base.
+    Base.metadata.create_all(bind=Motor_Base_Datos)  # Ejecuta creación de todos los modelos ligados a Base.

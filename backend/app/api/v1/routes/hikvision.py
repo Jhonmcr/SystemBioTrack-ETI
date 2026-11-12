@@ -1,20 +1,54 @@
-# SUMMARY: Define el endpoint webhook del lector Hikvision para recibir eventos ISAPI y preparar la lógica de validación y persistencia.
-from __future__ import annotations  # Activa tipado moderno para contratos HTTP y respuestas.
-from typing import Any  # Importa Any para payloads de respuesta flexibles y no tipados estricto.
-from fastapi import APIRouter, HTTPException, status  # Importa APIRouter y utilidades HTTP para el webhook.
-from pydantic import BaseModel, Field  # Importa BaseModel y Field para definir la estructura del payload entrante.
+# SUMMARY: Recibe eventos ISAPI Hikvision, guarda el marcaje crudo y procesa la asistencia diaria.
+"""Rutas HTTP del webhook biométrico Hikvision."""
 
-router = APIRouter()  # Crea el router del dominio Hikvision para separar el webhook del resto de APIs.
+from typing import Any
+
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.orm import Session
+
+from app.db.models import Marcaje_Crudo
+from app.db.session import get_db
+from app.schemas.hikvision import HikvisionEventPayload
+from app.services.attendance_service import Procesar_Marcaje_En_Tiempo_Real
 
 
-class HikvisionEventPayload(BaseModel):  # Define el esquema base esperado por el lector biométrico para un evento.
-    employeeNoString: str = Field(..., description="Número de empleado o identificador del usuario según el lector biométrico.")  # Guarda el valor de identificación del usuario en el evento.
-    eventTime: str = Field(..., description="Marca de tiempo del evento en formato ISO o equivalente del dispositivo.")  # Guarda la hora del evento recibido desde el lector.
-    deviceId: str | None = Field(default=None, description="Identificador opcional del dispositivo que emitió el evento.")  # Guarda la identidad del dispositivo si llega en el payload.
+Router_Hikvision = APIRouter()
 
 
-@router.post("/hikvision/events", status_code=status.HTTP_202_ACCEPTED)  # Define el endpoint receptor ISAPI del lector biométrico Hikvision.
-def receive_hikvision_event(payload: HikvisionEventPayload) -> dict[str, Any]:  # Recibe el payload del biométrico y responde con estado de aceptación.
-    if not payload.employeeNoString:  # Valida que venga el identificador del usuario para continuar.
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="employeeNoString is required.")  # Retorna error claro si falta el identificador principal.
-    return {"message": "Hikvision event received", "employeeNoString": payload.employeeNoString, "eventTime": payload.eventTime, "status": "accepted"}  # Responde confirmando que el evento fue leído y aceptado por el backend.
+@Router_Hikvision.post(
+    "/hikvision/events",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Procesar un evento biométrico de Hikvision",
+    description=(
+        "Persiste el marcaje crudo recibido y calcula la entrada, salida "
+        "o rebote de asistencia diaria asociado."
+    ),
+)
+def receive_hikvision_event(
+    Datos_Evento: HikvisionEventPayload,
+    Db_Sesion: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Summary: Persiste el evento validado y devuelve el resultado del motor."""
+    # Se almacena primero el evento crudo, que también alimenta el filtro antirrebote.
+    Nuevo_Marcaje = Marcaje_Crudo(
+        id_empleado_biometrico=Datos_Evento.employeeNoString,
+        fecha_hora_marcaje=Datos_Evento.eventTime,
+        tipo_marcaje=None,
+    )
+    Db_Sesion.add(Nuevo_Marcaje)
+    Db_Sesion.commit()
+    Db_Sesion.refresh(Nuevo_Marcaje)
+
+    # El servicio opera sobre los mismos identificador, timestamp y sesión persistidos.
+    Resultado_Procesamiento = Procesar_Marcaje_En_Tiempo_Real(
+        Id_Biometrico_Int=Datos_Evento.employeeNoString,
+        Fecha_Hora_Evento=Datos_Evento.eventTime,
+        Db_Sesion=Db_Sesion,
+    )
+    return {
+        "status": "accepted",
+        "marcaje_crudo_id": Nuevo_Marcaje.id,
+        "id_empleado_biometrico": Datos_Evento.employeeNoString,
+        "eventTime": Datos_Evento.eventTime.isoformat(),
+        "calculo_asistencia": Resultado_Procesamiento,
+    }
