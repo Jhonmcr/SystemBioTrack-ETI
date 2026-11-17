@@ -1,15 +1,21 @@
-# SUMMARY: Define los filtros, respuestas y correcciones manuales de asistencia diaria.
-"""Esquemas de entrada y salida compatibles con las entidades oficiales de asistencia."""
+# SUMMARY: Define los filtros, respuestas, marcajes por código y correcciones manuales de asistencia.
+"""Esquemas Pydantic del módulo de asistencia de personal."""
 
-from datetime import date, time
+from datetime import date, datetime, time
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    model_validator,
+)
 
 
 class AttendanceReportFilters(BaseModel):
     """Summary: Representa los filtros públicos disponibles para reportes."""
 
-    # Se mantienen los nombres existentes para preservar los alias HTTP.
+    # empleado_id es el nombre institucional; student_id se acepta solo por compatibilidad.
     start_date: date | None = Field(
         default=None,
         description="Fecha inicial inclusiva del rango de reportes.",
@@ -18,13 +24,27 @@ class AttendanceReportFilters(BaseModel):
         default=None,
         description="Fecha final inclusiva del rango de reportes.",
     )
-    student_id: int | None = Field(
+    empleado_id: int | None = Field(
         default=None,
+        validation_alias=AliasChoices("empleado_id", "student_id"),
         description="Identificador interno del empleado.",
     )
     status: str | None = Field(
         default=None,
         description="Identificador o nombre del estado de asistencia.",
+    )
+    horario_id: int | None = Field(
+        default=None,
+        gt=0,
+        description="Identificador del horario asignado al empleado.",
+    )
+    turno: str | None = Field(
+        default=None,
+        description="Nombre de turno, por ejemplo matutino o vespertino.",
+    )
+    solo_retardos: bool = Field(
+        default=False,
+        description="Limita el reporte a registros con minutos de retraso.",
     )
 
 
@@ -45,10 +65,6 @@ class AttendanceSummary(BaseModel):
         default=0,
         description="Cantidad total de ausencias registradas.",
     )
-    section: str | None = Field(
-        default=None,
-        description="Sección o grado asociado al resumen.",
-    )
 
 
 class AttendanceEmployeeResponse(BaseModel):
@@ -60,6 +76,17 @@ class AttendanceEmployeeResponse(BaseModel):
     id: int
     nombre: str
     apellido: str
+    cedula: str
+
+
+class AttendanceScheduleResponse(BaseModel):
+    """Summary: Expone el horario o turno asignado al empleado."""
+
+    # La relación ORM aporta tanto el identificador como el nombre institucional.
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nombre_horario: str
 
 
 class AttendanceStatusResponse(BaseModel):
@@ -73,9 +100,9 @@ class AttendanceStatusResponse(BaseModel):
 
 
 class AttendanceRecordResponse(BaseModel):
-    """Summary: Representa un registro diario con empleado y estado relacionados."""
+    """Summary: Representa asistencia con datos personales, turno y métricas de jornada."""
 
-    # Los nombres directos corresponden a columnas de asistencia_diaria.
+    # Relaciones ORM ya cargadas evitan consultas al serializar cada registro.
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -86,8 +113,79 @@ class AttendanceRecordResponse(BaseModel):
     minutos_tarde: int | None
     estatus_id: int
     modificado_manualmente: bool | None
+    tipo_marcaje: str | None = None
+    duracion_trabajada: str | None = None
     empleado: AttendanceEmployeeResponse
+    horario: AttendanceScheduleResponse | None = None
     estatus: AttendanceStatusResponse
+
+
+class AttendanceReportResponse(BaseModel):
+    """Summary: Define la respuesta paginada como conjunto de filtros y registros."""
+
+    # Cada elemento expone el esquema detallado compartido por los endpoints de reportes.
+    message: str
+    filters: dict[str, str | int | bool | None]
+    items: list[AttendanceRecordResponse]
+
+
+class AttendanceTardinessEmployeeSummary(BaseModel):
+    """Summary: Resume los retardos y minutos acumulados de un empleado."""
+
+    # Se conservan las mismas representaciones personales y de horario del detalle.
+    empleado: AttendanceEmployeeResponse
+    horario: AttendanceScheduleResponse
+    total_retardos: int
+    minutos_tarde_acumulados: int
+
+
+class AttendanceTardinessResponse(BaseModel):
+    """Summary: Define el resumen general y el detalle de retardos en un rango."""
+
+    # El total acumulado general se puede cotejar con los resúmenes individuales.
+    filters: dict[str, str | int | None]
+    total_retardos: int
+    minutos_tarde_acumulados: int
+    empleados: list[AttendanceTardinessEmployeeSummary]
+    items: list[AttendanceRecordResponse]
+
+
+class AttendancePunchCodeRequest(BaseModel):
+    """Summary: Valida la identidad del empleado y el timestamp de un marcaje manual."""
+
+    # Se permite un solo identificador para resolver inequívocamente al empleado.
+    codigo_empleado: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Código del empleado o su cédula.",
+    )
+    cedula: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Cédula registrada del empleado.",
+    )
+    id_empleado_biometrico: int | None = Field(
+        default=None,
+        gt=0,
+        description="Identificador de empleado registrado en el sistema biométrico.",
+    )
+    fecha_hora: datetime | None = Field(
+        default=None,
+        description="Fecha y hora del marcaje; por omisión se usa la hora actual.",
+    )
+
+    @model_validator(mode="after")
+    def Validar_Identificador_Unico(self) -> "AttendancePunchCodeRequest":
+        """Summary: Rechaza solicitudes sin identificador o con más de uno."""
+        # La entrada por teclado debe resolverse mediante exactamente un dato de identidad.
+        Identificadores = (
+            self.codigo_empleado,
+            self.cedula,
+            self.id_empleado_biometrico,
+        )
+        if sum(Identificador is not None for Identificador in Identificadores) != 1:
+            raise ValueError("Provide exactly one employee identifier.")
+        return self
 
 
 class AttendanceUpdateRequest(BaseModel):

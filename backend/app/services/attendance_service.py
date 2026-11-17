@@ -3,6 +3,7 @@
 
 from datetime import date, datetime, time, timedelta
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -20,19 +21,29 @@ def Minutos_Desde_Medianoche(Hora_Referencia: time) -> int:
 
 
 def Procesar_Marcaje_En_Tiempo_Real(
-    Id_Biometrico_Int: int,
+    Id_Biometrico_Int: int | None,
     Fecha_Hora_Evento: datetime,
     Db_Sesion: Session,
+    Empleado_Id: int | None = None,
 ) -> dict[str, int | str]:
-    """Summary: Registra una entrada o salida biométrica y devuelve el resultado del cálculo."""
+    """Summary: Procesa una entrada o salida de personal y calcula el estado diario."""
     # La ventana excluye marcajes repetidos recientes sin incluir el evento actual.
     Fecha_Evento = Fecha_Hora_Evento.date()
     Hora_Evento = Fecha_Hora_Evento.time()
     Limite_Inferior = Fecha_Hora_Evento - timedelta(minutes=3)
+    Condiciones_Empleado = []
+    if Id_Biometrico_Int is not None:
+        Condiciones_Empleado.append(
+            Marcaje_Crudo.id_empleado_biometrico == Id_Biometrico_Int
+        )
+    if Empleado_Id is not None:
+        Condiciones_Empleado.append(Marcaje_Crudo.empleado_id == Empleado_Id)
+    if not Condiciones_Empleado:
+        raise ValueError("A biometric or internal employee ID is required.")
     Marcaje_Previo = (
         Db_Sesion.query(Marcaje_Crudo)
         .filter(
-            Marcaje_Crudo.id_empleado_biometrico == Id_Biometrico_Int,
+            or_(*Condiciones_Empleado),
             Marcaje_Crudo.fecha_hora_marcaje >= Limite_Inferior,
             Marcaje_Crudo.fecha_hora_marcaje < Fecha_Hora_Evento,
         )
@@ -41,19 +52,22 @@ def Procesar_Marcaje_En_Tiempo_Real(
     if Marcaje_Previo:
         print(
             f"[ANTIRREBOTE] Marcaje repetido descartado "
-            f"para empleado #{Id_Biometrico_Int}"
+            f"para empleado #{Empleado_Id or Id_Biometrico_Int}"
         )
         return {"resultado": "rebote_ignorado"}
 
     # La relación biométrica localiza al empleado y su horario asignado.
-    Empleado_Encontrado = (
-        Db_Sesion.query(Empleado)
-        .filter(Empleado.id_empleado_biometrico == Id_Biometrico_Int)
-        .first()
-    )
+    Consulta_Empleado = Db_Sesion.query(Empleado)
+    if Empleado_Id is not None:
+        Consulta_Empleado = Consulta_Empleado.filter(Empleado.id == Empleado_Id)
+    else:
+        Consulta_Empleado = Consulta_Empleado.filter(
+            Empleado.id_empleado_biometrico == Id_Biometrico_Int
+        )
+    Empleado_Encontrado = Consulta_Empleado.first()
     if not Empleado_Encontrado:
         print(
-            f"[ADVERTENCIA] Empleado #{Id_Biometrico_Int} "
+            f"[ADVERTENCIA] Empleado #{Empleado_Id or Id_Biometrico_Int} "
             "no existe en tabla empleado."
         )
         return {"resultado": "empleado_no_encontrado"}
@@ -165,27 +179,32 @@ def Procesar_Marcaje_En_Tiempo_Real(
 def Procesar_Inasistencias_Diarias(
     Fecha_Objetivo: date,
     Db_Sesion: Session,
+    Horario_Id: int | None = None,
 ) -> dict[str, int | str]:
-    """Summary: Crea registros de inasistencia para empleados sin asistencia en la fecha."""
-    # El modelo oficial no contiene indicador activo, por lo que todas sus filas son elegibles.
-    Empleados_Sin_Asistencia = (
-        Db_Sesion.query(Empleado)
+    """Summary: Crea inasistencias para empleados de un horario sin asistencia."""
+    # El filtro de horario limita cierres parciales sin afectar los turnos posteriores.
+    Consulta_Empleados = Db_Sesion.query(Empleado).filter(
+        ~Db_Sesion.query(Asistencia_Diaria.id)
         .filter(
-            ~Db_Sesion.query(Asistencia_Diaria.id)
-            .filter(
-                Asistencia_Diaria.empleado_id == Empleado.id,
-                Asistencia_Diaria.fecha == Fecha_Objetivo,
-            )
-            .exists()
+            Asistencia_Diaria.empleado_id == Empleado.id,
+            Asistencia_Diaria.fecha == Fecha_Objetivo,
         )
-        .all()
+        .exists()
     )
+    if Horario_Id is not None:
+        Consulta_Empleados = Consulta_Empleados.filter(
+            Empleado.horario_id == Horario_Id
+        )
+    Empleados_Sin_Asistencia = Consulta_Empleados.all()
     if not Empleados_Sin_Asistencia:
-        return {
+        Resultado_Cierre: dict[str, int | str] = {
             "resultado": "cierre_diario_completado",
             "fecha": Fecha_Objetivo.isoformat(),
             "inasistencias_creadas": 0,
         }
+        if Horario_Id is not None:
+            Resultado_Cierre["horario_id"] = Horario_Id
+        return Resultado_Cierre
 
     # El estatus 3 es exclusivo de ausencias y debe existir en el catálogo oficial.
     Estatus_Inasistente = (
@@ -212,8 +231,11 @@ def Procesar_Inasistencias_Diarias(
             )
         )
     Db_Sesion.commit()
-    return {
+    Resultado_Cierre = {
         "resultado": "cierre_diario_completado",
         "fecha": Fecha_Objetivo.isoformat(),
         "inasistencias_creadas": len(Empleados_Sin_Asistencia),
     }
+    if Horario_Id is not None:
+        Resultado_Cierre["horario_id"] = Horario_Id
+    return Resultado_Cierre

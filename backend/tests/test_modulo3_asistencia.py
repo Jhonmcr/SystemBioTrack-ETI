@@ -179,6 +179,7 @@ def test_webhook_procesa_entrada_rebote_retraso_y_salidas(
         "resultado": "entrada_registrada",
         "minutos_tarde": 0,
     }
+    assert Db_Sesion.query(Marcaje_Crudo).one().tipo_marcaje == "biometrico"
 
     # El segundo marcaje dentro de tres minutos se persiste, pero no cambia asistencia.
     Respuesta_Rebote = Publicar_Evento_Hikvision(
@@ -278,11 +279,20 @@ def test_get_attendance_today_y_reports_aplican_filtros(
     assert Respuesta_Hoy.status_code == 200
     assert len(Respuesta_Hoy.json()["items"]) == 2
     assert Respuesta_Hoy.json()["date"] == Fecha_Hoy.isoformat()
+    Respuesta_Hoy_Por_Horario = Cliente_Test.get(
+        "/api/v1/attendance/today",
+        params={"horario_id": 1},
+    )
+    assert len(Respuesta_Hoy_Por_Horario.json()["items"]) == 2
+    assert all(
+        Item["horario"]["nombre_horario"] == "Mañana"
+        for Item in Respuesta_Hoy_Por_Horario.json()["items"]
+    )
 
     Parametros_Reporte = {
         "start_date": Fecha_Hoy.isoformat(),
         "end_date": Fecha_Hoy.isoformat(),
-        "student_id": 1,
+        "empleado_id": 1,
         "status": "A Tiempo",
     }
     Respuesta_Reporte = Cliente_Test.get(
@@ -293,7 +303,25 @@ def test_get_attendance_today_y_reports_aplican_filtros(
     assert Respuesta_Reporte.status_code == 200
     assert len(Datos_Reporte["items"]) == 1
     assert Datos_Reporte["items"][0]["empleado_id"] == 1
-    assert Datos_Reporte["filters"] == Parametros_Reporte
+    assert Datos_Reporte["items"][0]["horario"]["nombre_horario"] == "Mañana"
+    assert Datos_Reporte["filters"] == {
+        **Parametros_Reporte,
+        "student_id": 1,
+        "horario_id": None,
+        "turno": None,
+        "solo_retardos": False,
+    }
+
+    # El nombre anterior sigue aceptándose como alias secundario de compatibilidad.
+    Respuesta_Alias_Anterior = Cliente_Test.get(
+        "/api/v1/attendance/reports",
+        params={"student_id": 1},
+    )
+    assert Respuesta_Alias_Anterior.status_code == 200
+    assert all(
+        Registro["empleado_id"] == 1
+        for Registro in Respuesta_Alias_Anterior.json()["items"]
+    )
 
     # El estado también admite filtrar por ID del catálogo SQL.
     Respuesta_Estatus_Id = Cliente_Test.get(
@@ -536,3 +564,231 @@ def test_asistencia_multiples_horarios(
     assert Registros_Asistencia[Datos_Iniciales[1]].minutos_tarde == 0
     assert Registros_Asistencia[3].estatus_id == 2
     assert Registros_Asistencia[3].minutos_tarde == 40
+
+
+def test_filtro_horario_y_cierre_diario_selectivo(
+    Cliente_Test: TestClient,
+    Db_Sesion: Session,
+    Datos_Iniciales: tuple[int, int],
+) -> None:
+    """Summary: Verifica reportes por turno y cierre sin afectar al horario vespertino."""
+    # El segundo empleado queda asignado a un turno distinto del empleado matutino.
+    Db_Sesion.add(
+        Horario(
+            id=2,
+            nombre_horario="Vespertino",
+            hora_entrada_teorica=time(13, 0),
+            hora_salida_teorica=time(18, 0),
+        )
+    )
+    Empleado_Vespertino = (
+        Db_Sesion.query(Empleado).filter(Empleado.id == Datos_Iniciales[1]).one()
+    )
+    Empleado_Vespertino.horario_id = 2
+    Fecha_Reporte = date(2026, 4, 5)
+    Db_Sesion.add_all(
+        [
+            Asistencia_Diaria(
+                empleado_id=Datos_Iniciales[0],
+                fecha=Fecha_Reporte,
+                hora_entrada=time(7, 0),
+                estatus_id=1,
+                minutos_tarde=0,
+            ),
+            Asistencia_Diaria(
+                empleado_id=Datos_Iniciales[1],
+                fecha=Fecha_Reporte,
+                hora_entrada=time(13, 0),
+                estatus_id=1,
+                minutos_tarde=0,
+            ),
+        ]
+    )
+    Db_Sesion.commit()
+
+    # horario_id y turno seleccionan el horario asignado y el JSON siempre muestra su nombre.
+    Respuesta_Matutina = Cliente_Test.get(
+        "/api/v1/attendance/reports",
+        params={"horario_id": 1, "start_date": Fecha_Reporte.isoformat()},
+    )
+    Respuesta_Vespertina = Cliente_Test.get(
+        "/api/v1/attendance/reports",
+        params={"turno": "vespertino", "start_date": Fecha_Reporte.isoformat()},
+    )
+    assert [
+        Item["empleado_id"] for Item in Respuesta_Matutina.json()["items"]
+    ] == [Datos_Iniciales[0]]
+    assert (
+        Respuesta_Matutina.json()["items"][0]["horario"]["nombre_horario"]
+        == "Mañana"
+    )
+    assert [
+        Item["empleado_id"] for Item in Respuesta_Vespertina.json()["items"]
+    ] == [Datos_Iniciales[1]]
+    assert (
+        Respuesta_Vespertina.json()["items"][0]["horario"]["nombre_horario"]
+        == "Vespertino"
+    )
+
+    # El cierre de la fecha siguiente marca ausente al matutino, no al vespertino.
+    Fecha_Cierre = date(2026, 4, 6)
+    Respuesta_Cierre = Cliente_Test.post(
+        "/api/v1/attendance/close-day",
+        params={"fecha": Fecha_Cierre.isoformat(), "horario_id": 1},
+    )
+    assert Respuesta_Cierre.status_code == 200
+    assert Respuesta_Cierre.json()["inasistencias_creadas"] == 1
+    assert Respuesta_Cierre.json()["horario_id"] == 1
+    assert (
+        Db_Sesion.query(Asistencia_Diaria)
+        .filter(
+            Asistencia_Diaria.empleado_id == Datos_Iniciales[0],
+            Asistencia_Diaria.fecha == Fecha_Cierre,
+        )
+        .one()
+        .estatus_id
+        == 3
+    )
+    assert (
+        Db_Sesion.query(Asistencia_Diaria)
+        .filter(
+            Asistencia_Diaria.empleado_id == Datos_Iniciales[1],
+            Asistencia_Diaria.fecha == Fecha_Cierre,
+        )
+        .count()
+        == 0
+    )
+
+
+def test_marcaje_por_codigo_registra_entrada_y_salida(
+    Cliente_Test: TestClient,
+    Db_Sesion: Session,
+    Datos_Iniciales: tuple[int, int],
+) -> None:
+    """Summary: Comprueba registro por código, tipo de marcaje, puntualidad y salida."""
+    # El código funciona aunque el empleado no esté dado de alta en el reloj biométrico.
+    Empleado_Sin_Biometrico = (
+        Db_Sesion.query(Empleado).filter(Empleado.id == Datos_Iniciales[0]).one()
+    )
+    Empleado_Sin_Biometrico.id_empleado_biometrico = None
+    Db_Sesion.commit()
+
+    # La cédula y el timestamp permiten validar una jornada determinista.
+    Fecha_Entrada = datetime(2026, 4, 7, 7, 0)
+    Respuesta_Entrada = Cliente_Test.post(
+        "/api/v1/attendance/punch-code",
+        json={
+            "cedula": "TEST-001",
+            "fecha_hora": Fecha_Entrada.isoformat(),
+        },
+    )
+    assert Respuesta_Entrada.status_code == 202
+    assert Respuesta_Entrada.json()["calculo_asistencia"] == {
+        "resultado": "entrada_registrada",
+        "minutos_tarde": 0,
+    }
+
+    # El segundo marcaje recorre el mismo motor y completa la hora de salida.
+    Respuesta_Salida = Cliente_Test.post(
+        "/api/v1/attendance/punch-code",
+        json={
+            "codigo_empleado": "TEST-001",
+            "fecha_hora": datetime(2026, 4, 7, 15, 0).isoformat(),
+        },
+    )
+    assert Respuesta_Salida.status_code == 202
+    assert Respuesta_Salida.json()["calculo_asistencia"] == {
+        "resultado": "salida_registrada",
+        "duracion_trabajada": "8:00:00",
+    }
+    assert {
+        Marcaje.tipo_marcaje
+        for Marcaje in Db_Sesion.query(Marcaje_Crudo).all()
+    } == {"codigo"}
+    Registro_Diario = (
+        Db_Sesion.query(Asistencia_Diaria)
+        .filter(Asistencia_Diaria.empleado_id == Datos_Iniciales[0])
+        .one()
+    )
+    assert Registro_Diario.estatus_id == 1
+    assert Registro_Diario.minutos_tarde == 0
+    assert Registro_Diario.hora_entrada == time(7, 0)
+    assert Registro_Diario.hora_salida == time(15, 0)
+
+    # El reporte identifica el método y calcula la duración desde las horas consolidadas.
+    Respuesta_Reporte = Cliente_Test.get(
+        "/api/v1/attendance/reports",
+        params={"start_date": date(2026, 4, 7).isoformat()},
+    )
+    Fila_Reporte = Respuesta_Reporte.json()["items"][0]
+    assert Fila_Reporte["tipo_marcaje"] == "codigo"
+    assert Fila_Reporte["duracion_trabajada"] == "8:00:00"
+
+
+def test_reportes_filtran_retardos_y_resumen_por_empleado(
+    Cliente_Test: TestClient,
+    Db_Sesion: Session,
+    Datos_Iniciales: tuple[int, int],
+) -> None:
+    """Summary: Verifica filtro solo_retardos y acumulados de minutos por empleado."""
+    # Se cargan tres registros para probar exclusión de puntualidad y acumulación individual.
+    Fecha_Reporte = date(2026, 4, 8)
+    Db_Sesion.add_all(
+        [
+            Asistencia_Diaria(
+                empleado_id=Datos_Iniciales[0],
+                fecha=Fecha_Reporte,
+                hora_entrada=time(7, 31),
+                estatus_id=2,
+                minutos_tarde=31,
+            ),
+            Asistencia_Diaria(
+                empleado_id=Datos_Iniciales[0],
+                fecha=Fecha_Reporte + timedelta(days=1),
+                hora_entrada=time(7, 35),
+                estatus_id=2,
+                minutos_tarde=35,
+            ),
+            Asistencia_Diaria(
+                empleado_id=Datos_Iniciales[1],
+                fecha=Fecha_Reporte,
+                hora_entrada=time(7, 0),
+                estatus_id=1,
+                minutos_tarde=0,
+            ),
+        ]
+    )
+    Db_Sesion.commit()
+
+    # solo_retardos conserva únicamente filas con minutos positivos en el rango pedido.
+    Respuesta_Retardos = Cliente_Test.get(
+        "/api/v1/attendance/reports",
+        params={
+            "start_date": Fecha_Reporte.isoformat(),
+            "end_date": (Fecha_Reporte + timedelta(days=1)).isoformat(),
+            "solo_retardos": "true",
+        },
+    )
+    assert Respuesta_Retardos.status_code == 200
+    assert len(Respuesta_Retardos.json()["items"]) == 2
+    assert all(
+        Item["minutos_tarde"] > 0
+        for Item in Respuesta_Retardos.json()["items"]
+    )
+
+    # El resumen expone el total general y la suma acumulada individual.
+    Respuesta_Resumen = Cliente_Test.get(
+        "/api/v1/attendance/reports/tardiness",
+        params={
+            "start_date": Fecha_Reporte.isoformat(),
+            "end_date": (Fecha_Reporte + timedelta(days=1)).isoformat(),
+            "horario_id": 1,
+        },
+    )
+    Datos_Resumen = Respuesta_Resumen.json()
+    assert Respuesta_Resumen.status_code == 200
+    assert Datos_Resumen["total_retardos"] == 2
+    assert Datos_Resumen["minutos_tarde_acumulados"] == 66
+    assert Datos_Resumen["empleados"][0]["empleado"]["id"] == Datos_Iniciales[0]
+    assert Datos_Resumen["empleados"][0]["total_retardos"] == 2
+    assert Datos_Resumen["empleados"][0]["minutos_tarde_acumulados"] == 66

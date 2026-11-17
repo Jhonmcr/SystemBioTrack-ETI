@@ -24,7 +24,7 @@ Router_Hikvision = APIRouter()
         "o rebote de asistencia diaria asociado."
     ),
 )
-def receive_hikvision_event(
+def Recibir_Evento_Hikvision(
     Datos_Evento: HikvisionEventPayload,
     Db_Sesion: Session = Depends(get_db),
 ) -> dict[str, Any]:
@@ -33,7 +33,7 @@ def receive_hikvision_event(
     Nuevo_Marcaje = Marcaje_Crudo(
         id_empleado_biometrico=Datos_Evento.employeeNoString,
         fecha_hora_marcaje=Datos_Evento.eventTime,
-        tipo_marcaje=None,
+        tipo_marcaje="biometrico",
     )
     Db_Sesion.add(Nuevo_Marcaje)
     Db_Sesion.commit()

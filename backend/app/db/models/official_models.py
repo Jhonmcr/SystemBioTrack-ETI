@@ -3,13 +3,25 @@
 
 from datetime import date, datetime, time
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Time, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Time,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
 
 class Rol(Base):
+    """Summary: Mapea el catálogo institucional de roles de usuario."""
+
     __tablename__ = "rol"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -17,6 +29,8 @@ class Rol(Base):
 
 
 class Cargo(Base):
+    """Summary: Mapea los cargos asignables al personal institucional."""
+
     __tablename__ = "cargo"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -24,6 +38,8 @@ class Cargo(Base):
 
 
 class Horario(Base):
+    """Summary: Mapea horarios y horas teóricas de los turnos de trabajo."""
+
     __tablename__ = "horario"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -33,6 +49,8 @@ class Horario(Base):
 
 
 class Empleado(Base):
+    """Summary: Mapea los datos personales, cargo, turno e identificación del empleado."""
+
     __tablename__ = "empleado"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -50,6 +68,8 @@ class Empleado(Base):
 
 
 class Usuario(Base):
+    """Summary: Mapea cuentas de acceso relacionadas con empleados y roles."""
+
     __tablename__ = "usuario"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -65,6 +85,8 @@ class Usuario(Base):
 
 
 class Estatus_Asistencia(Base):
+    """Summary: Mapea el catálogo oficial de estados diarios de asistencia."""
+
     __tablename__ = "estatus_asistencia"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -72,17 +94,31 @@ class Estatus_Asistencia(Base):
 
 
 class Marcaje_Crudo(Base):
+    """Summary: Mapea marcajes biométricos o por código antes del cálculo diario."""
+
+    # Un evento puede identificar al personal por reloj, llave interna o ambos.
     __tablename__ = "marcaje_crudo"
+    __table_args__ = (
+        CheckConstraint(
+            "id_empleado_biometrico IS NOT NULL OR empleado_id IS NOT NULL",
+            name="ck_marcaje_crudo_identificador_empleado",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    id_empleado_biometrico: Mapped[int] = mapped_column(
-        ForeignKey("empleado.id_empleado_biometrico"), nullable=False
+    id_empleado_biometrico: Mapped[int | None] = mapped_column(
+        ForeignKey("empleado.id_empleado_biometrico"), nullable=True
+    )
+    empleado_id: Mapped[int | None] = mapped_column(
+        ForeignKey("empleado.id"), nullable=True
     )
     fecha_hora_marcaje: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     tipo_marcaje: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class Asistencia_Diaria(Base):
+    """Summary: Mapea el registro consolidado de asistencia de un empleado por fecha."""
+
     __tablename__ = "asistencia_diaria"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
