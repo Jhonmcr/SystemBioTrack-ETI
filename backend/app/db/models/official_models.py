@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Time,
+    Text,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -65,6 +66,7 @@ class Empleado(Base):
 
     cargo: Mapped[Cargo] = relationship()
     horario: Mapped[Horario] = relationship()
+    ausencias: Mapped[list["Ausencia"]] = relationship(back_populates="empleado")
 
 
 class Usuario(Base):
@@ -82,6 +84,64 @@ class Usuario(Base):
 
     empleado: Mapped[Empleado] = relationship()
     rol: Mapped[Rol] = relationship()
+    ausencias_aprobadas: Mapped[list["Ausencia"]] = relationship(
+        back_populates="aprobado_por"
+    )
+
+
+class TipoAusencia(Base):
+    """Summary: Mapea el catálogo institucional de tipos de permisos y justificativos."""
+
+    __tablename__ = "tipo_ausencia"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    nombre_tipo: Mapped[str] = mapped_column(String, nullable=False)
+
+    ausencias: Mapped[list["Ausencia"]] = relationship(
+        back_populates="tipo_ausencia"
+    )
+
+
+class Ausencia(Base):
+    """Summary: Mapea solicitudes de permisos con sus fechas, estado y respaldo PDF."""
+
+    __tablename__ = "ausencia"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    empleado_id: Mapped[int] = mapped_column(
+        ForeignKey("empleado.id"), nullable=False
+    )
+    tipo_ausencia_id: Mapped[int] = mapped_column(
+        ForeignKey("tipo_ausencia.id"), nullable=False
+    )
+    fecha_inicio: Mapped[date] = mapped_column(Date, nullable=False)
+    fecha_fin: Mapped[date] = mapped_column(Date, nullable=False)
+    descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
+    archivo_pdf_ruta: Mapped[str | None] = mapped_column(String, nullable=True)
+    estado_aprobacion: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+        default="Pendiente",
+        server_default=text("'Pendiente'"),
+    )
+    aprobado_por_usuario_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuario.id"), nullable=True
+    )
+    fecha_solicitud: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True
+    )
+
+    empleado: Mapped[Empleado] = relationship(back_populates="ausencias")
+    tipo_ausencia: Mapped[TipoAusencia] = relationship(back_populates="ausencias")
+    aprobado_por: Mapped[Usuario | None] = relationship(
+        back_populates="ausencias_aprobadas"
+    )
+
+    @property
+    def tiene_archivo_pdf(self) -> bool:
+        """Summary: Indica si la solicitud tiene una referencia a un PDF adjunto."""
+        # La API expone disponibilidad, no la ruta interna del sistema de archivos.
+        return bool(self.archivo_pdf_ruta)
 
 
 class Estatus_Asistencia(Base):
