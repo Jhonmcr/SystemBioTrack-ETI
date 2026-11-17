@@ -51,9 +51,12 @@ CREATE TABLE empleado ( -- Crea la tabla 'empleado'
 
 CREATE TABLE marcaje_crudo ( -- Crea la tabla que recibe los datos directos del reloj
     id SERIAL PRIMARY KEY, -- ID único autoincremental del marcaje
-    id_empleado_biometrico INTEGER NOT NULL, -- ID del reloj del empleado que marcó
+    id_empleado_biometrico INTEGER, -- ID del reloj para eventos biométricos
+    empleado_id INTEGER, -- ID interno para eventos de código sin cuenta biométrica
     fecha_hora_marcaje TIMESTAMP NOT NULL, -- Fecha y hora exacta del momento del marcaje
-    tipo_marcaje VARCHAR -- Indica si el marcaje fue de entrada o salida
+    tipo_marcaje VARCHAR, -- Indica si el origen fue biométrico o código
+    CONSTRAINT ck_marcaje_crudo_identificador_empleado
+        CHECK (id_empleado_biometrico IS NOT NULL OR empleado_id IS NOT NULL)
 );
 
 CREATE TABLE estatus_asistencia ( -- Crea la tabla de los estados de asistencia
@@ -103,6 +106,7 @@ ALTER TABLE usuario ADD FOREIGN KEY (empleado_id) REFERENCES empleado(id); -- Co
 ALTER TABLE empleado ADD FOREIGN KEY (cargo_id) REFERENCES cargo(id); -- Conecta al empleado con su cargo
 ALTER TABLE empleado ADD FOREIGN KEY (horario_id) REFERENCES horario(id); -- Conecta al empleado con su horario asignado
 ALTER TABLE marcaje_crudo ADD FOREIGN KEY (id_empleado_biometrico) REFERENCES empleado(id_empleado_biometrico); -- Conecta el marcaje crudo con el empleado usando el ID del reloj
+ALTER TABLE marcaje_crudo ADD FOREIGN KEY (empleado_id) REFERENCES empleado(id); -- Conecta marcajes por código con la llave interna del empleado
 ALTER TABLE asistencia_diaria ADD FOREIGN KEY (empleado_id) REFERENCES empleado(id); -- Conecta el resumen de asistencia con el empleado
 ALTER TABLE asistencia_diaria ADD FOREIGN KEY (estatus_id) REFERENCES estatus_asistencia(id); -- Conecta la asistencia diaria con su estatus final
 ALTER TABLE ausencia ADD FOREIGN KEY (empleado_id) REFERENCES empleado(id); -- Conecta el permiso solicitado con el empleado
@@ -113,7 +117,7 @@ ALTER TABLE ausencia ADD FOREIGN KEY (aprobado_por_usuario_id) REFERENCES usuari
 -- DATOS DE EJEMPLO (Datos Semilla)
 -- ==========================================
 
-INSERT INTO rol (id, nombre_rol) VALUES (1, 'Superadmin'), (2, 'Admin'), (3, 'User'); -- Inserta los tres roles del sistema
+INSERT INTO rol (id, nombre_rol) VALUES (1, 'Superadmin'), (2, 'Administrador'), (3, 'Operador'), (4, 'Dirección'); -- Define gestión global, administración institucional, operación diaria y dirección
 INSERT INTO cargo (id, nombre_cargo) VALUES (1, 'Administrativo'), (2, 'Docente'), (3, 'Obrero'); -- Inserta los tres cargos básicos
 INSERT INTO horario (id, nombre_horario, hora_entrada_teorica, hora_salida_teorica) VALUES (1, 'Mañana', '07:00:00', '13:00:00'), (2, 'Tarde', '13:00:00', '18:00:00'), (3, 'Mixto', '08:00:00', '16:00:00'); -- Inserta los turnos predefinidos
 INSERT INTO estatus_asistencia (id, nombre_estatus) VALUES (1, 'A Tiempo'), (2, 'Retrasado'), (3, 'Inasistente'); -- Inserta las calificaciones de asistencia
