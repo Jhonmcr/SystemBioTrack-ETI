@@ -25,8 +25,10 @@ def Procesar_Marcaje_En_Tiempo_Real(
     Fecha_Hora_Evento: datetime,
     Db_Sesion: Session,
     Empleado_Id: int | None = None,
+    Tipo_Marcaje: str = "biometrico",
 ) -> dict[str, int | str]:
-    """Summary: Procesa una entrada o salida de personal y calcula el estado diario."""
+    """Summary: Procesa la asistencia y recibe el método sin alterar el cálculo diario."""
+    # La modalidad se conserva como contexto; las reglas de asistencia son independientes.
     # La ventana excluye marcajes repetidos recientes sin incluir el evento actual.
     Fecha_Evento = Fecha_Hora_Evento.date()
     Hora_Evento = Fecha_Hora_Evento.time()
@@ -52,7 +54,8 @@ def Procesar_Marcaje_En_Tiempo_Real(
     if Marcaje_Previo:
         print(
             f"[ANTIRREBOTE] Marcaje repetido descartado "
-            f"para empleado #{Empleado_Id or Id_Biometrico_Int}"
+            f"para empleado #{Empleado_Id or Id_Biometrico_Int} "
+            f"| Método: {Tipo_Marcaje}"
         )
         return {"resultado": "rebote_ignorado"}
 
@@ -68,7 +71,7 @@ def Procesar_Marcaje_En_Tiempo_Real(
     if not Empleado_Encontrado:
         print(
             f"[ADVERTENCIA] Empleado #{Empleado_Id or Id_Biometrico_Int} "
-            "no existe en tabla empleado."
+            f"no existe en tabla empleado. | Método: {Tipo_Marcaje}"
         )
         return {"resultado": "empleado_no_encontrado"}
 
@@ -139,7 +142,7 @@ def Procesar_Marcaje_En_Tiempo_Real(
         print(
             f"[ENTRADA REGISTRADA] Empleado: {Empleado_Encontrado.nombre} "
             f"{Empleado_Encontrado.apellido} | Estatus: {Id_Estatus} | "
-            f"Retardo: {Minutos_Tarde} min"
+            f"Retardo: {Minutos_Tarde} min | Método: {Tipo_Marcaje}"
         )
         return {
             "resultado": "entrada_registrada",
@@ -168,7 +171,8 @@ def Procesar_Marcaje_En_Tiempo_Real(
     Db_Sesion.commit()
     print(
         f"[SALIDA REGISTRADA] Empleado: {Empleado_Encontrado.nombre} "
-        f"{Empleado_Encontrado.apellido} | Salida: {Hora_Evento}"
+        f"{Empleado_Encontrado.apellido} | Salida: {Hora_Evento} "
+        f"| Método: {Tipo_Marcaje}"
     )
     return {
         "resultado": "salida_registrada",

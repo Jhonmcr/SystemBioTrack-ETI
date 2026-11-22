@@ -120,6 +120,7 @@ def Publicar_Evento_Hikvision(
     Id_Biometrico: int,
     Fecha_Hora: datetime,
     Evento_Anidado: bool = True,
+    Modo_Verificacion: str | None = None,
 ) -> Any:
     """Summary: Envía un evento Hikvision anidado o plano al webhook de pruebas."""
     # Ambas representaciones cubren AccessControllerEvent y aliases de timestamp.
@@ -130,11 +131,17 @@ def Publicar_Evento_Hikvision(
                 "employeeNoString": str(Id_Biometrico),
             },
         }
+        if Modo_Verificacion is not None:
+            Datos_Evento["AccessControllerEvent"]["currentVerifyMode"] = (
+                Modo_Verificacion
+            )
     else:
         Datos_Evento = {
             "employeeNoString": str(Id_Biometrico),
             "eventTime": Fecha_Hora.isoformat(),
         }
+        if Modo_Verificacion is not None:
+            Datos_Evento["currentVerifyMode"] = Modo_Verificacion
     return Cliente.post("/api/v1/hikvision/events", json=Datos_Evento)
 
 
@@ -149,6 +156,71 @@ def test_esquema_hikvision_acepta_datetime_y_id_convertible() -> None:
     )
     assert Datos_Evento.employeeNoString == 1001
     assert Datos_Evento.eventTime == datetime(2026, 4, 1, 7, 0)
+
+
+@pytest.mark.parametrize(
+    ("Modo_Verificacion", "Tipo_Marcaje"),
+    [("finger", "huella"), ("pw", "codigo"), ("card", "tarjeta")],
+)
+def test_Mapeo_Metodo_Verificacion_Hikvision(
+    Cliente_Test: TestClient,
+    Db_Sesion: Session,
+    Datos_Iniciales: tuple[int, int],
+    Modo_Verificacion: str,
+    Tipo_Marcaje: str,
+) -> None:
+    """Summary: Guarda el método estándar de verificación en el marcaje crudo."""
+    # El payload anidado reproduce la estructura AccessControllerEvent del terminal.
+    Respuesta_Evento = Publicar_Evento_Hikvision(
+        Cliente_Test,
+        1001,
+        datetime(2026, 4, 1, 7, 0),
+        Modo_Verificacion=Modo_Verificacion,
+    )
+
+    assert Respuesta_Evento.status_code == 202
+    assert Respuesta_Evento.json()["status"] == "accepted"
+    assert Db_Sesion.query(Marcaje_Crudo).one().tipo_marcaje == Tipo_Marcaje
+    assert Datos_Iniciales == (1, 2)
+
+
+@pytest.mark.parametrize(
+    "Payload_Evento",
+    [
+        {"eventType": "heartBeat"},
+        {"dateTime": "fecha-invalida", "AccessControllerEvent": {}},
+        {
+            "dateTime": "2026-04-01T07:00:00",
+            "AccessControllerEvent": {},
+        },
+        {
+            "dateTime": "2026-04-01T07:00:00",
+            "AccessControllerEvent": {"employeeNoString": ""},
+        },
+        {
+            "dateTime": "2026-04-01T07:00:00",
+            "AccessControllerEvent": {"employeeNoString": None},
+        },
+    ],
+)
+def test_Ignora_Eventos_Hikvision_Sin_Empleado(
+    Cliente_Test: TestClient,
+    Db_Sesion: Session,
+    Payload_Evento: dict[str, Any],
+) -> None:
+    """Summary: Devuelve éxito informativo para heartbeats o IDs de empleado ausentes."""
+    # Los eventos de sistema se reciben como JSON pero no deben persistirse como marcajes.
+    Respuesta_Evento = Cliente_Test.post(
+        "/api/v1/hikvision/events",
+        json=Payload_Evento,
+    )
+
+    assert Respuesta_Evento.status_code == 200
+    assert Respuesta_Evento.json() == {
+        "status": "ignored",
+        "reason": "evento_sin_empleado",
+    }
+    assert Db_Sesion.query(Marcaje_Crudo).count() == 0
 
 
 def test_app_carga_configuracion_con_variables_extra() -> None:
@@ -442,7 +514,7 @@ def test_webhook_rechaza_payload_invalido_y_maneja_id_desconocido(
     Datos_Iniciales: tuple[int, int],
 ) -> None:
     """Summary: Valida la respuesta ante un identificador inválido o sin empleado."""
-    # El esquema rechaza IDs no numéricos antes de crear marcajes crudos.
+    # Un ID no numérico se normaliza como ausente y evita persistir eventos de sistema.
     Respuesta_Payload_Invalido = Cliente_Test.post(
         "/api/v1/hikvision/events",
         json={
@@ -450,7 +522,11 @@ def test_webhook_rechaza_payload_invalido_y_maneja_id_desconocido(
             "AccessControllerEvent": {"employeeNoString": "no-es-numero"},
         },
     )
-    assert Respuesta_Payload_Invalido.status_code == 422
+    assert Respuesta_Payload_Invalido.status_code == 200
+    assert Respuesta_Payload_Invalido.json() == {
+        "status": "ignored",
+        "reason": "evento_sin_empleado",
+    }
     assert Db_Sesion.query(Marcaje_Crudo).count() == 0
 
     # Un ID numérico desconocido se persiste, y el motor reporta que no hay empleado.

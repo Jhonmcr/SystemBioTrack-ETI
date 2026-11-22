@@ -13,14 +13,17 @@ class HikvisionEventPayload(BaseModel):
     # El dispositivo puede envolver los campos de identificación y tiempo.
     model_config = ConfigDict(extra="ignore")
 
-    employeeNoString: int = Field(
-        ...,
-        gt=0,
+    employeeNoString: int | None = Field(
+        default=None,
         description="Identificador biométrico del empleado convertible a entero.",
     )
-    eventTime: datetime = Field(
-        ...,
+    eventTime: datetime | None = Field(
+        default=None,
         description="Fecha y hora del evento reportada por el dispositivo.",
+    )
+    currentVerifyMode: str | None = Field(
+        default=None,
+        description="Método de verificación estándar reportado por el controlador.",
     )
     deviceId: str | None = Field(
         default=None,
@@ -47,6 +50,10 @@ class HikvisionEventPayload(BaseModel):
                 Datos_Normalizados["employeeNoString"] = Datos_Controlador.get(
                     "employeeNoString"
                 )
+            if "currentVerifyMode" not in Datos_Normalizados:
+                Datos_Normalizados["currentVerifyMode"] = Datos_Controlador.get(
+                    "currentVerifyMode"
+                )
             if "eventTime" not in Datos_Normalizados:
                 for Nombre_Fecha in ("eventTime", "dateTime"):
                     if Nombre_Fecha in Datos_Controlador:
@@ -54,4 +61,19 @@ class HikvisionEventPayload(BaseModel):
                             Nombre_Fecha
                         ]
                         break
+
+        Valor_Empleado = Datos_Normalizados.get("employeeNoString")
+        if isinstance(Valor_Empleado, str):
+            try:
+                Valor_Empleado = int(Valor_Empleado.strip())
+            except ValueError:
+                Valor_Empleado = None
+        if (
+            isinstance(Valor_Empleado, bool)
+            or not isinstance(Valor_Empleado, int)
+            or Valor_Empleado <= 0
+        ):
+            # Los heartbeats y valores de identificación no numéricos no son marcajes.
+            return {"employeeNoString": None}
+        Datos_Normalizados["employeeNoString"] = Valor_Empleado
         return Datos_Normalizados
