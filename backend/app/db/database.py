@@ -1,3 +1,4 @@
+# SUMMARY: Conserva la configuración de base de datos de la implementación heredada.
 """
 =============================================================================
 SUMMARY DEL MÓDULO

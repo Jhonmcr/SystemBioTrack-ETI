@@ -1,3 +1,4 @@
+# SUMMARY: Simula endpoints ISAPI de un dispositivo Hikvision para pruebas locales de integración.
 """
 =============================================================================
 SUMMARY DEL MÓDULO

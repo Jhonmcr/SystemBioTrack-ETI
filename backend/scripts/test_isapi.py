@@ -1,3 +1,4 @@
+# SUMMARY: Comprueba conectividad ISAPI con un dispositivo usando autenticación HTTP Digest.
 """
 =============================================================================
 SUMMARY DEL MÓDULO

@@ -6,6 +6,7 @@
 base_de_datos.sql
 *.dump
 *.backup
+backend/storage/
 
 # ============================================
 # ENTORNOS VIRTUALES PYTHON

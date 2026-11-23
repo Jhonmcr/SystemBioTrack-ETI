@@ -1,106 +1,245 @@
-# SUMMARY: Implementa la l?gica de negocio para evaluar el estado de asistencia seg?n el horario y guardar registros hist?ricos en PostgreSQL.
-from __future__ import annotations  # Habilita anotaciones modernas para tipado expl?cito en servicios y endpoints.
-from datetime import datetime, timedelta  # Importa datetime y timedelta para parsear tiempos y calcular margen de tolerancia.
-from typing import Any  # Importa Any para devolver diccionarios din?micos con datos de negocio.
-from sqlalchemy.orm import Session  # Importa Session para ejecutar consultas de base de datos en servicios.
-from app.db.models.attendance_log import AttendanceLog, AttendanceStatus  # Importa el modelo y enum de asistencia para persistencia y evaluaci?n.
-from app.db.models.schedule import Schedule  # Importa el horario base para evaluar la entrada del usuario.
-from app.db.models.user import User  # Importa el usuario del sistema para validar identidad y estado activo.
+# SUMMARY: Procesa marcajes y calcula asistencia diaria contra los modelos y horarios oficiales.
+"""Motor de asistencia diaria basado en los modelos oficiales de la base de datos."""
+
+from datetime import date, datetime, time, timedelta
+
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from app.db.models import (
+    Asistencia_Diaria,
+    Empleado,
+    Estatus_Asistencia,
+    Horario,
+    Marcaje_Crudo,
+)
 
 
-def parse_event_time(raw_time: str) -> datetime:  # Define la funci?n para convertir cadenas del lector biom?trico en datetime v?lido.
-    normalized_value = raw_time.strip()  # Elimina espacios en blanco alrededor del valor para evitar errores de parseo.
-    if normalized_value.endswith("Z"):  # Detecta timestamps ISO con sufijo Z para convertirlos a formato offset-aware.
-        normalized_value = normalized_value[:-1] + "+00:00"  # Reemplaza la marca Z por offset UTC compatible con Python.
-    try:  # Intenta parsear el valor con ISO 8601 est?ndar del lector.
-        parsed_time = datetime.fromisoformat(normalized_value)  # Convierte el valor a datetime con soporte de timezone.
-    except ValueError:  # Maneja valores de fecha no ISO, como cadenas de texto legibles de pruebas locales.
-        parsed_time = datetime.strptime(normalized_value, "%Y-%m-%d %H:%M:%S")  # Intenta parsear el patr?n alternativo de fecha y hora.
-    return parsed_time  # Devuelve el datetime normalizado para c?lculo de asistencia.
+def Minutos_Desde_Medianoche(Hora_Referencia: time) -> int:
+    """Summary: Convierte una hora a minutos desde medianoche para comparar horarios."""
+    return Hora_Referencia.hour * 60 + Hora_Referencia.minute
 
 
-def resolve_attendance_status(event_time: datetime, schedule: Schedule) -> AttendanceStatus:  # Eval?a si el acceso fue puntual o tard?o seg?n el horario configurado.
-    entry_datetime = datetime.combine(event_time.date(), schedule.entry_time)  # Construye la fecha y hora exacta de entrada te?rica para el d?a del evento.
-    grace_deadline = entry_datetime + timedelta(minutes=schedule.grace_period_minutes)  # Calcula el l?mite final permitido antes de considerar tardanza.
-    if event_time <= entry_datetime:  # Si la marca lleg? antes o en la hora te?rica, es asistencia puntual.
-        return AttendanceStatus.PRESENTE  # Devuelve el estado de presente para entradas sin demora.
-    if event_time <= grace_deadline:  # Si la marca qued? dentro del margen de gracia, se considera asistencia en regla.
-        return AttendanceStatus.PRESENTE  # Devuelve presente cuando se cumple la tolerancia del horario.
-    return AttendanceStatus.LLEGADA_TARDIA  # Devuelve tard?a cuando excede la hora de entrada y la tolerancia.
-
-
-def save_attendance_event(db: Session, employee_no: str, event_time: datetime, device_id: str | None = None) -> AttendanceLog:  # Guarda el evento del lector en la tabla de historial de asistencia.
-    user = db.query(User).filter(User.employee_no == employee_no, User.is_active.is_(True)).first()  # Busca el usuario activo con el employee_no reportado por el lector.
-    if user is None:  # Valida que exista el usuario antes de guardar la asistencia.
-        raise LookupError(f"No existe un usuario activo con employee_no={employee_no}.")  # Lanza error para indicar que la persona no est? registrada.
-    schedule = db.query(Schedule).order_by(Schedule.id.asc()).first()  # Busca el primer horario configurado cuando no existe una relaci?n directa por grado o secci?n.
-    if schedule is None:  # Verifica que exista al menos un horario para calcular la asistencia.
-        raise LookupError("No hay un horario configurado para evaluar la asistencia.")  # Lanza error para forzar configuraci?n previa del plan escolar.
-    attendance_status = resolve_attendance_status(event_time, schedule)  # Eval?a el estado seg?n la hora de entrada y la tolerancia del horario.
-    attendance_log = AttendanceLog(  # Crea el registro final de asistencia para persistir en la base de datos.
-        user_id=user.id,  # Asigna el usuario asociado al evento biom?trico.
-        timestamp=event_time,  # Guarda la hora exacta del evento recibido por el dispositivo.
-        status=attendance_status,  # Asigna el estado calculado por la l?gica del horario.
-        device_id=device_id,  # Registra el identificador del lector si fue enviado en el payload.
+def Procesar_Marcaje_En_Tiempo_Real(
+    Id_Biometrico_Int: int | None,
+    Fecha_Hora_Evento: datetime,
+    Db_Sesion: Session,
+    Empleado_Id: int | None = None,
+    Tipo_Marcaje: str = "biometrico",
+) -> dict[str, int | str]:
+    """Summary: Procesa la asistencia y recibe el método sin alterar el cálculo diario."""
+    # La modalidad se conserva como contexto; las reglas de asistencia son independientes.
+    # La ventana excluye marcajes repetidos recientes sin incluir el evento actual.
+    Fecha_Evento = Fecha_Hora_Evento.date()
+    Hora_Evento = Fecha_Hora_Evento.time()
+    Limite_Inferior = Fecha_Hora_Evento - timedelta(minutes=3)
+    Condiciones_Empleado = []
+    if Id_Biometrico_Int is not None:
+        Condiciones_Empleado.append(
+            Marcaje_Crudo.id_empleado_biometrico == Id_Biometrico_Int
+        )
+    if Empleado_Id is not None:
+        Condiciones_Empleado.append(Marcaje_Crudo.empleado_id == Empleado_Id)
+    if not Condiciones_Empleado:
+        raise ValueError("A biometric or internal employee ID is required.")
+    Marcaje_Previo = (
+        Db_Sesion.query(Marcaje_Crudo)
+        .filter(
+            or_(*Condiciones_Empleado),
+            Marcaje_Crudo.fecha_hora_marcaje >= Limite_Inferior,
+            Marcaje_Crudo.fecha_hora_marcaje < Fecha_Hora_Evento,
+        )
+        .first()
     )
-    db.add(attendance_log)  # Agrega el registro a la sesi?n activa de SQLAlchemy.
-    db.commit()  # Guarda la transacci?n en PostgreSQL.
-    db.refresh(attendance_log)  # Reconsulta el registro para incluir su ID generado en la base de datos.
-    return attendance_log  # Devuelve el registro persistido para reportarlo en la respuesta del endpoint.
+    if Marcaje_Previo:
+        print(
+            f"[ANTIRREBOTE] Marcaje repetido descartado "
+            f"para empleado #{Empleado_Id or Id_Biometrico_Int} "
+            f"| Método: {Tipo_Marcaje}"
+        )
+        return {"resultado": "rebote_ignorado"}
 
+    # La relación biométrica localiza al empleado y su horario asignado.
+    Consulta_Empleado = Db_Sesion.query(Empleado)
+    if Empleado_Id is not None:
+        Consulta_Empleado = Consulta_Empleado.filter(Empleado.id == Empleado_Id)
+    else:
+        Consulta_Empleado = Consulta_Empleado.filter(
+            Empleado.id_empleado_biometrico == Id_Biometrico_Int
+        )
+    Empleado_Encontrado = Consulta_Empleado.first()
+    if not Empleado_Encontrado:
+        print(
+            f"[ADVERTENCIA] Empleado #{Empleado_Id or Id_Biometrico_Int} "
+            f"no existe en tabla empleado. | Método: {Tipo_Marcaje}"
+        )
+        return {"resultado": "empleado_no_encontrado"}
 
-def get_today_attendance_summary(db: Session) -> list[dict[str, Any]]:  # Genera el resumen del d?a actual agrupado por grado o secci?n.
-    today_start = datetime.combine(datetime.utcnow().date(), datetime.min.time())  # Define el inicio del d?a actual en UTC para filtrar registros del d?a.
-    today_end = today_start + timedelta(days=1)  # Define el fin del d?a actual para usar como rango de consulta.
-    attendance_rows = (  # Consulta la asistencia del d?a actual con el nombre del usuario, su grado y su secci?n.
-        db.query(AttendanceLog, User)  # Selecciona registros de asistencia y su usuario relacionado.
-        .join(User, User.id == AttendanceLog.user_id)  # Une cada log con su usuario para obtener metadata del estudiante.
-        .filter(AttendanceLog.timestamp >= today_start, AttendanceLog.timestamp < today_end)  # Filtra solo los registros del d?a actual.
-        .all()  # Ejecuta la consulta y devuelve todas las filas resultantes.
+    # Si falta el horario asignado, se mantiene el horario institucional existente.
+    Horario_Asignado = (
+        Db_Sesion.query(Horario)
+        .filter(Horario.id == Empleado_Encontrado.horario_id)
+        .first()
     )
-    summaries: list[dict[str, Any]] = []  # Crea la lista inicial donde se acumular?n los res?menes por secci?n o grado.
-    for attendance, user in attendance_rows:  # Recorre cada registro del d?a para generar el payload de resumen.
-        group_key = user.section or user.grade or "Sin grupo"  # Determina la clave de agrupaci?n seg?n secci?n o grado disponible.
-        existing = next((item for item in summaries if item["group"] == group_key), None)  # Busca si ya existe un grupo con la misma clave.
-        if existing is None:  # Crea un nuevo grupo cuando a?n no existe para la clave.
-            existing = {"group": group_key, "present": 0, "late": 0, "absent": 0, "justified": 0, "total": 0}  # Inicializa la estructura del resumen.
-            summaries.append(existing)  # Agrega el grupo a la salida final.
-        existing["total"] += 1  # Incrementa el total de registros por grupo.
-        if attendance.status == AttendanceStatus.PRESENTE:  # Cuenta los presentes dentro del grupo.
-            existing["present"] += 1  # Incrementa la cantidad de asistencias puntuales.
-        elif attendance.status == AttendanceStatus.LLEGADA_TARDIA:  # Cuenta las llegadas tard?as dentro del grupo.
-            existing["late"] += 1  # Incrementa la cantidad de llegadas tard?as.
-        elif attendance.status == AttendanceStatus.JUSTIFICADO:  # Cuenta las justificaciones dentro del grupo.
-            existing["justified"] += 1  # Incrementa el total de asistencias justificadas.
-        else:  # Cuenta las ausencias dentro del grupo.
-            existing["absent"] += 1  # Incrementa la cantidad de ausencias registradas.
-    return summaries  # Devuelve el resumen final del d?a para consumo de la API web.
+    Hora_Entrada_Teorica = (
+        Horario_Asignado.hora_entrada_teorica
+        if Horario_Asignado
+        else time(7, 0, 0)
+    )
+    Tolerancia_Minutos = 30
+
+    # El registro diario determina si el evento inicializa una entrada o completa la salida.
+    Registro_Asistencia = (
+        Db_Sesion.query(Asistencia_Diaria)
+        .filter(
+            Asistencia_Diaria.empleado_id == Empleado_Encontrado.id,
+            Asistencia_Diaria.fecha == Fecha_Evento,
+        )
+        .first()
+    )
+
+    if not Registro_Asistencia:
+        # La tolerancia pertenece al estado "A Tiempo"; solo su exceso produce retraso.
+        Segundos_Marcaje = (
+            Minutos_Desde_Medianoche(Hora_Evento) * 60 + Hora_Evento.second
+        )
+        Segundos_Teoricos = (
+            Minutos_Desde_Medianoche(Hora_Entrada_Teorica) * 60
+            + Hora_Entrada_Teorica.second
+        )
+
+        if Segundos_Marcaje <= Segundos_Teoricos + Tolerancia_Minutos * 60:
+            Id_Estatus = 1
+            Minutos_Tarde = 0
+        else:
+            Id_Estatus = 2
+            Segundos_Retraso = Segundos_Marcaje - Segundos_Teoricos
+            Minutos_Tarde = (Segundos_Retraso + 59) // 60
+
+        # La validación anticipada convierte un estatus semilla faltante en un error explícito.
+        Estatus_Encontrado = (
+            Db_Sesion.query(Estatus_Asistencia)
+            .filter(Estatus_Asistencia.id == Id_Estatus)
+            .first()
+        )
+        if not Estatus_Encontrado:
+            raise RuntimeError(
+                f"No existe el estatus de asistencia con ID {Id_Estatus}."
+            )
+
+        # Se guarda la primera hora del día y se conserva el esquema oficial de estados.
+        Nuevo_Registro = Asistencia_Diaria(
+            empleado_id=Empleado_Encontrado.id,
+            fecha=Fecha_Evento,
+            hora_entrada=Hora_Evento,
+            hora_salida=None,
+            minutos_tarde=Minutos_Tarde,
+            estatus_id=Id_Estatus,
+            modificado_manualmente=False,
+        )
+        Db_Sesion.add(Nuevo_Registro)
+        Db_Sesion.commit()
+        print(
+            f"[ENTRADA REGISTRADA] Empleado: {Empleado_Encontrado.nombre} "
+            f"{Empleado_Encontrado.apellido} | Estatus: {Id_Estatus} | "
+            f"Retardo: {Minutos_Tarde} min | Método: {Tipo_Marcaje}"
+        )
+        return {
+            "resultado": "entrada_registrada",
+            "minutos_tarde": Minutos_Tarde,
+        }
+
+    # Una salida ya fijada no se modifica con nuevos eventos posteriores al antirrebote.
+    if Registro_Asistencia.hora_salida is not None:
+        return {"resultado": "salida_ya_registrada"}
+    if Registro_Asistencia.hora_entrada is None:
+        raise RuntimeError(
+            "No se puede calcular la jornada: el registro diario no tiene hora de entrada."
+        )
+
+    # La diferencia se interpreta como jornada nocturna cuando la salida es al día siguiente.
+    Fecha_Hora_Entrada = datetime.combine(
+        Fecha_Evento, Registro_Asistencia.hora_entrada
+    )
+    Fecha_Hora_Salida = datetime.combine(Fecha_Evento, Hora_Evento)
+    if Fecha_Hora_Salida < Fecha_Hora_Entrada:
+        Fecha_Hora_Salida += timedelta(days=1)
+    Duracion_Trabajada = Fecha_Hora_Salida - Fecha_Hora_Entrada
+
+    # La hora de salida y la duración se calculan antes de confirmar la transacción.
+    Registro_Asistencia.hora_salida = Hora_Evento
+    Db_Sesion.commit()
+    print(
+        f"[SALIDA REGISTRADA] Empleado: {Empleado_Encontrado.nombre} "
+        f"{Empleado_Encontrado.apellido} | Salida: {Hora_Evento} "
+        f"| Método: {Tipo_Marcaje}"
+    )
+    return {
+        "resultado": "salida_registrada",
+        "duracion_trabajada": str(Duracion_Trabajada),
+    }
 
 
-def get_attendance_reports(db: Session, start_date: str | None, end_date: str | None, student_id: int | None, status: str | None) -> list[dict[str, Any]]:  # Genera reportes de asistencia seg?n filtros de fecha, estudiante y estado.
-    query = db.query(AttendanceLog, User).join(User, User.id == AttendanceLog.user_id)  # Inicializa la consulta base con historial y usuario asociado.
-    if start_date:  # Aplica filtro por fecha inicial cuando la API lo env?a.
-        start_value = datetime.fromisoformat(start_date)  # Convierte la fecha inicial a datetime para SQLAlchemy.
-        query = query.filter(AttendanceLog.timestamp >= start_value)  # Filtra registros desde la fecha inicial indicada.
-    if end_date:  # Aplica filtro por fecha final cuando la API lo env?a.
-        end_value = datetime.fromisoformat(end_date)  # Convierte la fecha final a datetime para SQLAlchemy.
-        query = query.filter(AttendanceLog.timestamp <= end_value)  # Filtra registros hasta la fecha final indicada.
-    if student_id is not None:  # Aplica filtro por estudiante cuando el cliente pide un usuario espec?fico.
-        query = query.filter(User.id == student_id)  # Filtra ?nicamente los registros del estudiante solicitado.
-    if status:  # Aplica filtro por estado de asistencia cuando se especifica.
-        query = query.filter(AttendanceLog.status == status.upper())  # Filtra la consulta por el estado solicitado normalizado a may?sculas.
-    rows = query.order_by(AttendanceLog.timestamp.desc()).all()  # Ordena los resultados m?s recientes primero para reportes relevantes.
-    report_rows: list[dict[str, Any]] = []  # Crea la lista final de resultados para la API de reportes.
-    for attendance, user in rows:  # Recorre cada registro para devolverlo en formato serializable.
-        report_rows.append({  # Agrega una fila con los datos relevantes del reporte.
-            "id": attendance.id,  # Expone el ID del log interno de asistencia.
-            "user_id": user.id,  # Expone el identificador del usuario relacionado.
-            "employee_no": user.employee_no,  # Expone el n?mero de empleado asociado al registro.
-            "full_name": f"{user.first_name} {user.last_name}",  # Construye el nombre completo para reportes visuales.
-            "grade": user.grade,  # Expone el grado del estudiante o personal.
-            "section": user.section,  # Expone la secci?n del estudiante o personal.
-            "timestamp": attendance.timestamp.isoformat(),  # Serializa la marca temporal del evento para la API.
-            "status": attendance.status.value,  # Expone el valor textual del estado de asistencia.
-            "device_id": attendance.device_id,  # Expone el lector que gener? el evento.
-        })  # Cierra el diccionario del reporte.
-    return report_rows  # Devuelve la colecci?n de reportes para la respuesta HTTP.
+def Procesar_Inasistencias_Diarias(
+    Fecha_Objetivo: date,
+    Db_Sesion: Session,
+    Horario_Id: int | None = None,
+) -> dict[str, int | str]:
+    """Summary: Crea inasistencias para empleados de un horario sin asistencia."""
+    # El filtro de horario limita cierres parciales sin afectar los turnos posteriores.
+    Consulta_Empleados = Db_Sesion.query(Empleado).filter(
+        ~Db_Sesion.query(Asistencia_Diaria.id)
+        .filter(
+            Asistencia_Diaria.empleado_id == Empleado.id,
+            Asistencia_Diaria.fecha == Fecha_Objetivo,
+        )
+        .exists()
+    )
+    if Horario_Id is not None:
+        Consulta_Empleados = Consulta_Empleados.filter(
+            Empleado.horario_id == Horario_Id
+        )
+    Empleados_Sin_Asistencia = Consulta_Empleados.all()
+    if not Empleados_Sin_Asistencia:
+        Resultado_Cierre: dict[str, int | str] = {
+            "resultado": "cierre_diario_completado",
+            "fecha": Fecha_Objetivo.isoformat(),
+            "inasistencias_creadas": 0,
+        }
+        if Horario_Id is not None:
+            Resultado_Cierre["horario_id"] = Horario_Id
+        return Resultado_Cierre
+
+    # El estatus 3 es exclusivo de ausencias y debe existir en el catálogo oficial.
+    Estatus_Inasistente = (
+        Db_Sesion.query(Estatus_Asistencia)
+        .filter(Estatus_Asistencia.id == 3)
+        .first()
+    )
+    if not Estatus_Inasistente:
+        raise RuntimeError(
+            "No existe el estatus de asistencia con ID 3 (Inasistente)."
+        )
+
+    # Los empleados sin registro reciben una fila vacía en horas y con cero minutos tarde.
+    for Empleado_Sin_Asistencia in Empleados_Sin_Asistencia:
+        Db_Sesion.add(
+            Asistencia_Diaria(
+                empleado_id=Empleado_Sin_Asistencia.id,
+                fecha=Fecha_Objetivo,
+                hora_entrada=None,
+                hora_salida=None,
+                minutos_tarde=0,
+                estatus_id=3,
+                modificado_manualmente=False,
+            )
+        )
+    Db_Sesion.commit()
+    Resultado_Cierre = {
+        "resultado": "cierre_diario_completado",
+        "fecha": Fecha_Objetivo.isoformat(),
+        "inasistencias_creadas": len(Empleados_Sin_Asistencia),
+    }
+    if Horario_Id is not None:
+        Resultado_Cierre["horario_id"] = Horario_Id
+    return Resultado_Cierre
