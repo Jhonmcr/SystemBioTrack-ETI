@@ -43,12 +43,13 @@ export default function ReportExportActions({ filters }) {
     <div className="dashboard-export-actions">
       {/* Summary: Solicita el libro Excel usando los filtros actualmente aplicados. */}
       <button
-        className="dashboard-button dashboard-button--secondary"
+        className="dashboard-button dashboard-button--outline"
         disabled={Boolean(exportingFormat)}
         onClick={() => exportReport('xlsx')}
         type="button"
       >
-        {exportingFormat === 'xlsx' ? 'Generando Excel...' : 'Exportar Excel'}
+        <span className="material-symbols-outlined" aria-hidden="true">download</span>
+        {exportingFormat === 'xlsx' ? 'Generando XLS...' : 'Exportar XLS'}
       </button>
       {/* Summary: Solicita el documento PDF usando los mismos filtros del dashboard. */}
       <button
@@ -57,7 +58,8 @@ export default function ReportExportActions({ filters }) {
         onClick={() => exportReport('pdf')}
         type="button"
       >
-        {exportingFormat === 'pdf' ? 'Generando PDF...' : 'Exportar PDF'}
+        <span className="material-symbols-outlined" aria-hidden="true">picture_as_pdf</span>
+        {exportingFormat === 'pdf' ? 'Generando PDF...' : 'Exportar Reporte PDF'}
       </button>
       {exportError && (
         <p className="dashboard-form-error" role="alert">

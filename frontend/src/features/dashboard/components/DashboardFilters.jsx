@@ -63,7 +63,7 @@ export default function DashboardFilters({ filters, onApply, onReset }) {
   return (
     <form className="dashboard-filter-bar" onSubmit={submitFilters}>
       <label className="dashboard-field">
-        <span>Desde</span>
+        <span className="material-symbols-outlined" aria-hidden="true">calendar_today</span>
         <input
           aria-label="Fecha inicial"
           name="start_date"
@@ -74,7 +74,7 @@ export default function DashboardFilters({ filters, onApply, onReset }) {
       </label>
 
       <label className="dashboard-field">
-        <span>Hasta</span>
+        <span className="material-symbols-outlined" aria-hidden="true">event</span>
         <input
           aria-label="Fecha final"
           name="end_date"
@@ -85,12 +85,12 @@ export default function DashboardFilters({ filters, onApply, onReset }) {
       </label>
 
       <label className="dashboard-field dashboard-field--schedule">
-        <span>ID de horario (opcional)</span>
+        <span className="material-symbols-outlined" aria-hidden="true">schedule</span>
         <input
           aria-label="Identificador de horario"
           min="1"
           name="horario_id"
-          placeholder="Todos"
+          placeholder="Horario"
           step="1"
           type="number"
           value={draft.horario_id}
@@ -99,11 +99,13 @@ export default function DashboardFilters({ filters, onApply, onReset }) {
       </label>
 
       <div className="dashboard-filter-actions">
-        <button className="dashboard-button dashboard-button--secondary" type="button" onClick={resetFilters}>
-          Restablecer
+        <button className="dashboard-button" type="button" onClick={resetFilters}>
+          <span className="material-symbols-outlined" aria-hidden="true">restart_alt</span>
+          Limpiar
         </button>
         <button className="dashboard-button dashboard-button--primary" type="submit">
-          Aplicar filtros
+          <span className="material-symbols-outlined" aria-hidden="true">filter_alt</span>
+          Aplicar
         </button>
       </div>
 

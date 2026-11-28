@@ -21,8 +21,8 @@ export default function AttendanceTrendChart({ data = [], loading }) {
   // El panel de carga conserva el espacio del gráfico mientras se consulta la serie.
   if (loading) {
     return (
-      <section className="dashboard-panel" aria-busy="true">
-        <h2 className="dashboard-panel-title">Evolución diaria</h2>
+      <section className="dashboard-panel dashboard-panel--trend" aria-busy="true">
+        <h2 className="dashboard-panel-title">Evolución de asistencia, retardos y ausentismo</h2>
         <div className="dashboard-chart-placeholder">
           Cargando evolución de asistencia...
         </div>
@@ -33,8 +33,8 @@ export default function AttendanceTrendChart({ data = [], loading }) {
   // Los datos vacíos se notifican antes de crear ejes sin puntos.
   if (!data.length) {
     return (
-      <section className="dashboard-panel">
-        <h2 className="dashboard-panel-title">Evolución diaria</h2>
+      <section className="dashboard-panel dashboard-panel--trend">
+        <h2 className="dashboard-panel-title">Evolución de asistencia, retardos y ausentismo</h2>
         <p className="dashboard-empty">No hay registros para graficar en este rango.</p>
       </section>
     )
@@ -51,12 +51,14 @@ export default function AttendanceTrendChart({ data = [], loading }) {
   }))
 
   return (
-    <section className="dashboard-panel">
+    <section className="dashboard-panel dashboard-panel--trend">
       <div className="dashboard-panel-heading">
         <div>
-          <h2 className="dashboard-panel-title">Evolución de asistencia</h2>
+          <h2 className="dashboard-panel-title">
+            Evolución de Asistencia, Retardos y Ausentismo
+          </h2>
           <p className="dashboard-panel-subtitle">
-            Registros diarios por estado dentro del rango seleccionado.
+            Consolidado diario dentro del rango seleccionado.
           </p>
         </div>
       </div>
@@ -68,9 +70,9 @@ export default function AttendanceTrendChart({ data = [], loading }) {
             <YAxis allowDecimals={false} tick={{ fill: '#64748b', fontSize: 12 }} />
             <Tooltip />
             <Legend />
-            <Bar dataKey="asistencias_puntuales" name="Puntuales" fill="#0f766e" />
-            <Bar dataKey="retardos" name="Retardos" fill="#d97706" />
-            <Bar dataKey="inasistencias" name="Inasistencias" fill="#be123c" />
+            <Bar dataKey="asistencias_puntuales" name="Puntuales" fill="#10b981" />
+            <Bar dataKey="retardos" name="Retardos" fill="#f59e0b" />
+            <Bar dataKey="inasistencias" name="Inasistencias" fill="#ef4444" />
           </BarChart>
         </ResponsiveContainer>
       </div>

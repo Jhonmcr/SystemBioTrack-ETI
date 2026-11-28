@@ -3,15 +3,17 @@
 const KPI_DEFINITIONS = [
   {
     key: 'total_registros',
-    label: 'Registros del periodo',
+    label: 'Registros en el período',
     color: 'blue',
+    icon: 'fact_check',
     /** Summary: Formatea conteos con separadores según la configuración regional. */
     format: (value) => value.toLocaleString('es-VE'),
   },
   {
     key: 'tasa_ausentismo',
-    label: 'Tasa de ausentismo',
+    label: 'Índice de ausentismo',
     color: 'rose',
+    icon: 'trending_down',
     /** Summary: Presenta la tasa como porcentaje con dos decimales. */
     format: (value) => `${Number(value).toFixed(2)}%`,
   },
@@ -19,13 +21,15 @@ const KPI_DEFINITIONS = [
     key: 'total_retardos',
     label: 'Llegadas tardías',
     color: 'amber',
+    icon: 'schedule',
     /** Summary: Formatea el total de retardos como conteo localizado. */
     format: (value) => value.toLocaleString('es-VE'),
   },
   {
     key: 'ausencias_justificadas',
-    label: 'Ausencias justificadas',
+    label: 'Reposos y permisos',
     color: 'teal',
+    icon: 'medical_services',
     /** Summary: Formatea el total aprobado como conteo localizado. */
     format: (value) => value.toLocaleString('es-VE'),
   },
@@ -65,12 +69,17 @@ export default function DashboardKpiCards({ metrics, loading }) {
   return (
     <section aria-label="Indicadores principales" className="dashboard-kpi-grid">
       {/* Summary: Renderiza las tarjetas configuradas usando valores del servidor. */}
-      {KPI_DEFINITIONS.map(({ key, label, color, format }) => (
+      {KPI_DEFINITIONS.map(({ key, label, color, format, icon }) => (
         <article className={`dashboard-kpi-card dashboard-kpi-card--${color}`} key={key}>
-          <p className="dashboard-kpi-label">{label}</p>
-          <strong className="dashboard-kpi-value">
-            {format(Number(metrics[key] ?? 0))}
-          </strong>
+          <div className="dashboard-kpi-copy">
+            <p className="dashboard-kpi-label">{label}</p>
+            <strong className="dashboard-kpi-value">
+              {format(Number(metrics[key] ?? 0))}
+            </strong>
+          </div>
+          <span className="dashboard-kpi-icon material-symbols-outlined" aria-hidden="true">
+            {icon}
+          </span>
         </article>
       ))}
     </section>

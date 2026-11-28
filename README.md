@@ -66,4 +66,7 @@ npm run dev
 ### Terminal 2: Para el servidor de datos (Backend)
 cd backend
 venv\Scripts\activate
-uvicorn main:app --reload
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+
+En desarrollo, Vite reenvía automáticamente las solicitudes `/api` a
+`http://127.0.0.1:8000`. Si modificas el proxy, reinicia `npm run dev`.
