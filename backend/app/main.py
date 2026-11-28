@@ -3,7 +3,7 @@
 
 from fastapi import FastAPI  # Importa FastAPI para crear la instancia principal de la API.
 from fastapi.middleware.cors import CORSMiddleware  # Habilita llamadas del frontend local a la API.
-from app.api.v1.routes import Router_Asistencia, Router_Ausencias, Router_Hikvision, Router_Usuarios  # Importa los routers de cada dominio funcional.
+from app.api.v1.routes import Router_Asistencia, Router_Ausencias, Router_Dashboard, Router_Hikvision, Router_Usuarios  # Importa los routers de cada dominio funcional.
 
 app = FastAPI(title="SystemBioTrack ETI API", version="1.0.0", description="Backend modular para asistencia escolar y biometría.")  # Crea la instancia principal de FastAPI con metadata del proyecto.
 
@@ -17,6 +17,7 @@ app.add_middleware(
 
 app.include_router(Router_Asistencia, prefix="/api/v1", tags=["attendance"])  # Registra los endpoints de consulta de asistencia bajo la versión v1.
 app.include_router(Router_Ausencias, prefix="/api/v1", tags=["absences"])  # Registra los endpoints de permisos y justificativos bajo la versión v1.
+app.include_router(Router_Dashboard, prefix="/api/v1", tags=["dashboard"])  # Registra resumen y exportación del módulo estadístico.
 app.include_router(Router_Usuarios, prefix="/api/v1", tags=["users"])  # Registra los endpoints de gestión local de usuarios bajo la versión v1.
 app.include_router(Router_Hikvision, prefix="/api/v1", tags=["hikvision"])  # Registra el webhook de eventos biométricos bajo la versión v1.
 
