@@ -7,6 +7,7 @@
  * @returns {JSX.Element} Tabla accesible o el estado correspondiente.
  */
 export default function TardinessReportTable({ report, loading }) {
+  // La tabla solo representa datos cuando la solicitud ya terminó correctamente.
   if (loading) {
     return (
       <section className="dashboard-panel" aria-busy="true">
@@ -64,6 +65,7 @@ export default function TardinessReportTable({ report, loading }) {
             </tr>
           </thead>
           <tbody>
+            {/* Summary: Construye una fila por empleado del resumen de tardanzas. */}
             {employees.map((item) => (
               <tr key={item.empleado.id}>
                 <td>

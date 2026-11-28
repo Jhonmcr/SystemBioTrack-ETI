@@ -12,6 +12,10 @@ export default function ReportExportActions({ filters }) {
   const [exportingFormat, setExportingFormat] = useState('')
   const [exportError, setExportError] = useState('')
 
+  /**
+   * Summary: Descarga el archivo solicitado y presenta errores del servidor.
+   * @param {'pdf'|'xlsx'} format Formato elegido por el usuario.
+   */
   async function exportReport(format) {
     setExportingFormat(format)
     setExportError('')
@@ -26,6 +30,7 @@ export default function ReportExportActions({ filters }) {
       document.body.appendChild(link)
       link.click()
       link.remove()
+      // La URL se revoca después de que el navegador procesa el clic de descarga.
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
     } catch (error) {
       setExportError(error.message || 'No se pudo generar el archivo.')
@@ -36,6 +41,7 @@ export default function ReportExportActions({ filters }) {
 
   return (
     <div className="dashboard-export-actions">
+      {/* Summary: Solicita el libro Excel usando los filtros actualmente aplicados. */}
       <button
         className="dashboard-button dashboard-button--secondary"
         disabled={Boolean(exportingFormat)}
@@ -44,6 +50,7 @@ export default function ReportExportActions({ filters }) {
       >
         {exportingFormat === 'xlsx' ? 'Generando Excel...' : 'Exportar Excel'}
       </button>
+      {/* Summary: Solicita el documento PDF usando los mismos filtros del dashboard. */}
       <button
         className="dashboard-button dashboard-button--primary"
         disabled={Boolean(exportingFormat)}

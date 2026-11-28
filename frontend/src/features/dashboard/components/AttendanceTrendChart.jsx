@@ -18,6 +18,7 @@ import {
  * @returns {JSX.Element} Panel de barras agrupadas o mensaje de estado.
  */
 export default function AttendanceTrendChart({ data = [], loading }) {
+  // El panel de carga conserva el espacio del gráfico mientras se consulta la serie.
   if (loading) {
     return (
       <section className="dashboard-panel" aria-busy="true">
@@ -29,6 +30,7 @@ export default function AttendanceTrendChart({ data = [], loading }) {
     )
   }
 
+  // Los datos vacíos se notifican antes de crear ejes sin puntos.
   if (!data.length) {
     return (
       <section className="dashboard-panel">
@@ -39,6 +41,7 @@ export default function AttendanceTrendChart({ data = [], loading }) {
   }
 
   // Las fechas se muestran en formato corto y las métricas se conservan como conteos.
+  // Summary: Añade una etiqueta de fecha localizada a cada punto de la serie.
   const chartData = data.map((point) => ({
     ...point,
     fecha_label: new Date(`${point.fecha}T00:00:00`).toLocaleDateString('es-VE', {

@@ -5,24 +5,28 @@ const KPI_DEFINITIONS = [
     key: 'total_registros',
     label: 'Registros del periodo',
     color: 'blue',
+    /** Summary: Formatea conteos con separadores según la configuración regional. */
     format: (value) => value.toLocaleString('es-VE'),
   },
   {
     key: 'tasa_ausentismo',
     label: 'Tasa de ausentismo',
     color: 'rose',
+    /** Summary: Presenta la tasa como porcentaje con dos decimales. */
     format: (value) => `${Number(value).toFixed(2)}%`,
   },
   {
     key: 'total_retardos',
     label: 'Llegadas tardías',
     color: 'amber',
+    /** Summary: Formatea el total de retardos como conteo localizado. */
     format: (value) => value.toLocaleString('es-VE'),
   },
   {
     key: 'ausencias_justificadas',
     label: 'Ausencias justificadas',
     color: 'teal',
+    /** Summary: Formatea el total aprobado como conteo localizado. */
     format: (value) => value.toLocaleString('es-VE'),
   },
 ]
@@ -34,6 +38,7 @@ const KPI_DEFINITIONS = [
  * @returns {JSX.Element} Cuadrícula de KPI con contenido accesible.
  */
 export default function DashboardKpiCards({ metrics, loading }) {
+  // El estado de carga mantiene el espacio de cada indicador mientras llega la API.
   if (loading) {
     return (
       <div aria-label="Cargando indicadores" className="dashboard-kpi-grid" aria-live="polite">
@@ -47,6 +52,7 @@ export default function DashboardKpiCards({ metrics, loading }) {
     )
   }
 
+  // La ausencia de respuesta se diferencia de un KPI cuyo valor real sea cero.
   if (!metrics) {
     return (
       <p className="dashboard-empty dashboard-kpi-empty">
@@ -58,6 +64,7 @@ export default function DashboardKpiCards({ metrics, loading }) {
   // Se evita mostrar valores ficticios: cada tarjeta se alimenta del KPI de la API.
   return (
     <section aria-label="Indicadores principales" className="dashboard-kpi-grid">
+      {/* Summary: Renderiza las tarjetas configuradas usando valores del servidor. */}
       {KPI_DEFINITIONS.map(({ key, label, color, format }) => (
         <article className={`dashboard-kpi-card dashboard-kpi-card--${color}`} key={key}>
           <p className="dashboard-kpi-label">{label}</p>

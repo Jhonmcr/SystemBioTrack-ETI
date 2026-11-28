@@ -11,6 +11,7 @@ const API_V1_URL = `${API_BASE_URL}/api/v1`
 function createFilterParams(filters) {
   const params = new URLSearchParams()
 
+  // Cada clave de filtro se serializa solo cuando tiene un valor utilizable.
   Object.entries(filters).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
       params.set(key, String(value))

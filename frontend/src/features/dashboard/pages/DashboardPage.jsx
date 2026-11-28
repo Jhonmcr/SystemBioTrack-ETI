@@ -150,9 +150,11 @@ const DASHBOARD_STYLES = `
   }
 `
 
+/** Summary: Crea los filtros iniciales para el mes calendario actual. */
 function getDefaultFilters() {
   // Al iniciar, el dashboard muestra desde el primer día del mes hasta hoy.
   const today = new Date()
+  /** Summary: Formatea una fecha local sin convertirla a otra zona horaria. */
   const toLocalDateString = (date) => {
     const month = String(date.getMonth() + 1).padStart(2, '0')
     const day = String(date.getDate()).padStart(2, '0')
@@ -179,6 +181,7 @@ function DashboardDataView({ filters }) {
   const [summaryError, setSummaryError] = useState('')
   const [tardinessError, setTardinessError] = useState('')
 
+  // Summary: Suscribe consultas paralelas y cancela las solicitudes de filtros anteriores.
   // Cada endpoint se resuelve de forma independiente para preservar resultados parciales.
   useEffect(() => {
     const controller = new AbortController()
@@ -186,6 +189,7 @@ function DashboardDataView({ filters }) {
     getDashboardSummary(filters, controller.signal)
       .then(setSummary)
       .catch((error) => {
+        // El error de un endpoint no interrumpe la carga independiente del otro.
         if (error.name !== 'AbortError') {
           setSummaryError(error.message || 'No se pudo cargar el resumen estadístico.')
         }
@@ -198,6 +202,7 @@ function DashboardDataView({ filters }) {
     getTardinessReport(filters, controller.signal)
       .then(setTardiness)
       .catch((error) => {
+        // El error se muestra en su propia sección y conserva el resto del dashboard.
         if (error.name !== 'AbortError') {
           setTardinessError(error.message || 'No se pudo cargar el reporte de tardanzas.')
         }
@@ -206,6 +211,7 @@ function DashboardDataView({ filters }) {
         if (!controller.signal.aborted) setTardinessLoading(false)
       })
 
+    // La limpieza evita aplicar respuestas de filtros que ya fueron reemplazados.
     return () => controller.abort()
   }, [filters])
 
@@ -251,6 +257,7 @@ function DashboardDataView({ filters }) {
 export default function DashboardPage() {
   const [filters, setFilters] = useState(getDefaultFilters)
 
+  /** Summary: Restablece el formulario y los datos al rango predeterminado. */
   function resetFilters() {
     const defaultFilters = getDefaultFilters()
     setFilters(defaultFilters)

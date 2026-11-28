@@ -27,6 +27,7 @@ export default function AbsenceByCargoChart({
   causes = [],
   loading,
 }) {
+  // Ambos gráficos comparten la carga del endpoint de resumen.
   if (loading) {
     return (
       <section className="dashboard-panel" aria-busy="true">
@@ -72,6 +73,7 @@ export default function AbsenceByCargoChart({
                   margin={{ top: 4, right: 16, left: 8, bottom: 4 }}
                 >
                   <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" horizontal={false} />
+                  {/* Summary: Presenta los valores del eje como porcentajes. */}
                   <XAxis
                     allowDecimals
                     tickFormatter={(value) => `${value}%`}
@@ -107,6 +109,7 @@ export default function AbsenceByCargoChart({
                     outerRadius={88}
                     paddingAngle={2}
                   >
+                    {/* Summary: Asigna color estable a cada tipo de ausencia dinámico. */}
                     {causes.map((cause, index) => (
                       <Cell
                         fill={CAUSE_COLORS[index % CAUSE_COLORS.length]}

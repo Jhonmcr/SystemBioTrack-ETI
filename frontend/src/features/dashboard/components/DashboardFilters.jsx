@@ -11,12 +11,21 @@ export default function DashboardFilters({ filters, onApply, onReset }) {
   const [draft, setDraft] = useState(filters)
   const [validationError, setValidationError] = useState('')
 
+  /**
+   * Summary: Actualiza un campo del formulario y limpia el error anterior.
+   * @param {Event} event Cambio generado por uno de los controles del filtro.
+   */
   function updateField(event) {
     const { name, value } = event.target
+    // La actualización funcional conserva los valores de los demás filtros.
     setDraft((current) => ({ ...current, [name]: value }))
     setValidationError('')
   }
 
+  /**
+   * Summary: Valida el rango y aplica los filtros al dashboard.
+   * @param {Event} event Envío del formulario de filtros.
+   */
   function submitFilters(event) {
     event.preventDefault()
 
@@ -44,6 +53,7 @@ export default function DashboardFilters({ filters, onApply, onReset }) {
     })
   }
 
+  /** Summary: Restaura los filtros iniciales y elimina errores de validación. */
   function resetFilters() {
     setValidationError('')
     const resetValues = onReset()
